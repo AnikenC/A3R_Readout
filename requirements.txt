@@ -1,0 +1,13 @@
+jax
+jaxlib
+qiskit
+qiskit-dynamics
+qiskit-ibm-runtime
+qiskit-experiments
+sympy
+chex
+matplotlib
+scipy
+pylatexenc
+scikit-learn
+qiskit-ibmq-provider
