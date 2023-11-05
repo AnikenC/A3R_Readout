@@ -436,3 +436,45 @@ def improved_ac_stark_photon_experiment(
             )
 
     return big_exp
+
+
+def qubit_t1_exp(
+    qubit: int,
+    backend,
+    min_delay: Optional[float] = 0.0,
+    max_delay: Optional[float] = 100.0 * 1e-6,
+    num_exp: Optional[int] = 101,
+):
+    single_q_dict = get_single_qubit_pulses(qubit, backend)
+    x_pulse = single_q_dict["x pulse"]
+    dt = backend.configuration().dt
+
+    delay_linspace = np.linspace(min_delay, max_delay, num_exp)
+
+    t1_decay_exp = []
+
+    for t1_delay in delay_linspace:
+        t1_delay_dt = get_closest_multiple_of_16(get_dt_from(t1_delay))
+        with pulse.build(
+            backend=backend,
+            default_alignment="sequential",
+            name=f"Qubit T1, Delay: {int(t1_delay_dt * dt/1e-6 * 1e3) / 1e3}us",
+        ) as t1_sched:
+            qubit_chan = pulse.drive_channel(qubit)
+
+            pulse.play(x_pulse, qubit_chan)
+            pulse.delay(t1_delay_dt, qubit_chan)
+            pulse.measure(qubit, pulse.RegisterSlot(qubit))
+        t1_decay_exp.append(t1_sched)
+
+    details = {
+        "Total Experiment Size": len(t1_decay_exp),
+        "Frequency Step Size (us)": round(
+            (delay_linspace[1] - delay_linspace[0]) / 1e-6, 3
+        ),
+        "Frequency Span (us)": round(
+            (delay_linspace[-1] - delay_linspace[0]) / 1e-6, 3
+        ),
+    }
+
+    return t1_decay_exp, details
