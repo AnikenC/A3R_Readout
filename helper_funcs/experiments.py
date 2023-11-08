@@ -4,7 +4,8 @@ from qiskit.providers.backend import Backend
 from typing import Optional, Union
 from qiskit.circuit import Parameter
 
-from helper_funcs.utils import get_closest_multiple_of_16, get_dt_from, get_single_qubit_pulses
+from helper_funcs.utils import *
+
 
 class RRFreqSpec:
     def __init__(
@@ -13,7 +14,9 @@ class RRFreqSpec:
         backend: Backend,
         freq_span: Optional[float] = None,
         num_experiments: Optional[float] = None,
-        freq_linspace: Optional[float] = None
+        freq_linspace: Optional[float] = None,
+        fit_func_name: Optional[str] = "gaussian",
+        chi_est: Optional[float] = 0.6e6
     ):
         super().__init__()
         construct_linspace = freq_span == None and num_experiments == None
@@ -28,11 +31,21 @@ class RRFreqSpec:
         self.backend = backend
         self.freq_linspace = freq_linspace
         if not construct_linspace:
-            self.freq_linspace = np.linspace(-0.5 * freq_span, 0.5 * freq_span, num_experiments)
-        
+            self.freq_linspace = np.linspace(
+                -0.5 * freq_span, 0.5 * freq_span, num_experiments
+            )
+
         single_q_dict = get_single_qubit_pulses(qubit, backend)
 
         self.x_pulse = single_q_dict["x pulse"]
+        self.supported_fit_funcs = {"gaussian": gaussian_func, "sinc": sinc_func}
+        if fit_func_name not in self.supported_fit_funcs.keys():
+            raise ValueError(
+                f"only the following fit funcs are supported currently: {self.supported_fit_funcs.keys()}"
+            )
+        self.fit_func = self.supported_fit_funcs[fit_func_name]
+
+        self.chi_est = chi_est
 
     def get_jobs(self):
         freq_experiments_g = []
@@ -64,7 +77,8 @@ class RRFreqSpec:
             freq_experiments_e.append(freq_spec_e_sched)
 
             details = {
-                "Total Experiment Size": len(freq_experiments_g) + len(freq_experiments_e),
+                "Total Experiment Size": len(freq_experiments_g)
+                + len(freq_experiments_e),
                 "Frequency Step Size (MHz)": round(
                     (self.freq_linspace[1] - self.freq_linspace[0]) / 1e6, 3
                 ),
@@ -74,6 +88,11 @@ class RRFreqSpec:
             }
 
         return (freq_experiments_g, freq_experiments_e, details)
+    
+    def run_analysis(results_arr, custom_label: Optional[str] = 'Results', fit_func_name: Optional[str] = None):
+        if fit_func_name is not None:
+            
+
 
 class ACStarkPhoton:
     def __init__(
@@ -98,18 +117,20 @@ class ACStarkPhoton:
         meas_sigma = self.measure_pulse.sigma
         meas_width = meas_duration - 4 * meas_sigma
 
-        supported_modes = ['gaussian_square', 'gaussian']
+        supported_modes = ["gaussian_square", "gaussian"]
         if mode not in supported_modes:
-            raise ValueError(f'input mode: {mode} is not supported, valid modes are {supported_modes}')
+            raise ValueError(
+                f"input mode: {mode} is not supported, valid modes are {supported_modes}"
+            )
 
-        if mode=='gaussian_square':
+        if mode == "gaussian_square":
             self.meas_pulse = pulse.GaussianSquare(
                 duration=meas_duration,
                 amp=meas_amp,
                 sigma=meas_sigma,
                 width=meas_width,
             )
-        if mode=='gaussian':
+        if mode == "gaussian":
             self.meas_pulse = pulse.Gaussian(
                 duration=meas_duration,
                 amp=meas_amp,
@@ -128,13 +149,15 @@ class ACStarkPhoton:
         self.qubit_sigma_sec = qubit_sigma_sec
         self.mode = mode
         self.delay_duration_dt = delay_duration_dt
-    
+
     def get_jobs(self):
         freq = Parameter("freq")
         meas_delay = Parameter("meas delay")
 
         with pulse.build(
-            backend=self.backend, default_alignment="sequential", name="AC Starks Freq Spec"
+            backend=self.backend,
+            default_alignment="sequential",
+            name="AC Starks Freq Spec",
         ) as q_freq_spec_sched:
             qubit_chan = pulse.drive_channel(self.qubit)
             meas_chan = pulse.measure_channel(self.qubit)
@@ -158,7 +181,9 @@ class ACStarkPhoton:
                 )
                 pulse.delay(delay_dur, qubit_chan)
             pulse.delay(
-                get_closest_multiple_of_16(self.buffer_delay_duration), meas_chan, name="b delay"
+                get_closest_multiple_of_16(self.buffer_delay_duration),
+                meas_chan,
+                name="b delay",
             )
             pulse.measure(self.qubit, pulse.MemorySlot(self.qubit))
 

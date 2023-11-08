@@ -6,22 +6,35 @@ from qiskit.circuit import Parameter
 
 from scipy.optimize import curve_fit
 
+
+def gaussian_func(x, a, b, c):
+    return a * np.exp(-((x - b) ** 2) / (2 * c**2))
+
+
+def sinc_func(x, a, b, c):
+    return a * np.sinc((x - b) / c)
+
+
 def get_closest_multiple_of(value, base_number):
     return int(value + base_number / 2) - (int(value + base_number / 2) % base_number)
+
 
 # samples need to be multiples of 16
 def get_closest_multiple_of_16(num):
     return get_closest_multiple_of(num, 16)
 
+
 # Convert seconds to dt
 def get_dt_from(sec, dt: Optional[float] = 1 / 4.5 * 1.0e-9):
     return get_closest_multiple_of(sec / dt, 16)
 
+
 def fit_function(x_values, y_values, function, init_params):
     fitparams, conv = curve_fit(function, x_values, y_values, init_params)
     y_fit = function(x_values, *fitparams)
-    
+
     return fitparams, y_fit
+
 
 def acquisition_checker(job: list):
     acq_duration_list = []
@@ -58,6 +71,7 @@ def acquisition_checker(job: list):
         raise ValueError(
             "All Acquisition Durations must be positive integer multiples of 16"
         )
+
 
 def get_single_qubit_pulses(qubit: int, backend: Backend) -> dict:
     """
