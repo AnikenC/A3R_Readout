@@ -1,10 +1,12 @@
 import numpy as np
+from scipy.optimize import curve_fit
+
 from qiskit import pulse
 from qiskit.providers.backend import Backend
-from typing import Optional, Union
 from qiskit.circuit import Parameter
+from qiskit.result import Result
 
-from scipy.optimize import curve_fit
+from typing import Optional, Union
 
 
 def gaussian_func(x, a, b, c):
@@ -105,3 +107,13 @@ def get_single_qubit_pulses(qubit: int, backend: Backend) -> dict:
         "meas delay": measure_delay,
     }
     return single_qubit_rr_dict
+
+
+def get_results_arr(result: Result, qubit: int, scale_factor: Optional[float] = 1e-7):
+    big_list = []
+
+    for i in range(len(result.to_dict()["results"])):
+        big_list.append(result.get_memory(i)[:, qubit] * scale_factor)
+
+    big_arr = np.array(big_list)
+    return big_arr

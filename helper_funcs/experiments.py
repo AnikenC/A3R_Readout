@@ -1,10 +1,15 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
 from qiskit import pulse
 from qiskit.providers.backend import Backend
-from typing import Optional, Union
 from qiskit.circuit import Parameter
 
+from typing import Optional, Union
+
 from helper_funcs.utils import *
+
+MHz = 1e6
 
 
 class RRFreqSpec:
@@ -16,7 +21,7 @@ class RRFreqSpec:
         num_experiments: Optional[float] = None,
         freq_linspace: Optional[float] = None,
         fit_func_name: Optional[str] = "gaussian",
-        chi_est: Optional[float] = 0.6e6
+        chi_est: Optional[float] = 0.6e6,
     ):
         super().__init__()
         construct_linspace = freq_span == None and num_experiments == None
@@ -88,10 +93,79 @@ class RRFreqSpec:
             }
 
         return (freq_experiments_g, freq_experiments_e, details)
-    
-    def run_analysis(results_arr, custom_label: Optional[str] = 'Results', fit_func_name: Optional[str] = None):
+
+    def run_analysis(
+        self,
+        results_arr: np.ndarray,
+        custom_label: Optional[str] = "Results",
+        chi_est: Optional[float] = None,
+        fit_func_name: Optional[str] = None,
+    ):
+        if chi_est is not None:
+            self.chi_est = chi_est
+        if (
+            results_arr.shape[:2] != (2, len(self.freq_linspace))
+            or len(results_arr.shape) != 3
+        ):
+            raise ValueError(
+                "results_arr must be of shape 2 x Linspace Size x Num Shots"
+            )
+
         if fit_func_name is not None:
-            
+            if fit_func_name not in self.supported_fit_funcs.keys():
+                raise ValueError(
+                    f"fit_func must be one of {self.supported_fit_funcs.keys()}"
+                )
+            self.fit_func = self.supported_fit_funcs[fit_func_name]
+
+        mean_res = np.mean(results_arr, axis=-1)
+        abs_res = np.abs(mean_res)
+        abs_g, abs_e = abs_res
+
+        p0_g = [7.0, -0.5 * self.chi_est, 5.0e6]
+        p0_e = [7.0, 0.5 * self.chi_est, 5.0e6]
+
+        popt_g, pcov_g = curve_fit(self.fit_func, self.freq_linspace, abs_g, p0_g)
+        popt_e, pcov_e = curve_fit(self.fit_func, self.freq_linspace, abs_e, p0_e)
+
+        f_g = popt_g[1]
+        f_e = popt_e[1]
+        cal_freq = 0.5 * (f_g + f_e)
+        chi = np.abs(f_g - f_e)
+
+        plt.scatter(
+            self.freq_linspace / MHz, abs_res[0], label="g data", c="lightgreen"
+        )
+        plt.plot(
+            self.freq_linspace / MHz,
+            gaussian_func(self.freq_linspace, *popt_g),
+            label=f"Fit g",
+        )
+        plt.scatter(self.freq_linspace / MHz, abs_res[1], label=f"e data", c="gold")
+        plt.plot(
+            self.freq_linspace / MHz,
+            gaussian_func(self.freq_linspace, *popt_e),
+            label=f"Fit e",
+        )
+        plt.axvline(
+            x=f_g / MHz, color="green", label=f"freq g: {int(f_g/MHz*1e3)/1e3}MHz"
+        )
+        plt.axvline(
+            x=f_e / MHz,
+            color="orange",
+            label=f"freq e: {int(f_e/MHz*1e3)/1e3}MHz",
+        )
+        plt.axvline(
+            x=cal_freq / MHz,
+            color="blue",
+            label=f"cal freq: {int(cal_freq/MHz*1e3)/1e3}MHz",
+        )
+        plt.axvline(x=0.0, color="grey", linestyle="dashed", label="Default Freq")
+        plt.xlabel("Frequency (MHz)")
+        plt.ylabel("Amplitude (A.U.)")
+        plt.title(f"Frequency Spec {custom_label} Chi: {int(chi/MHz*1e3)/1e3}MHz")
+        plt.legend(bbox_to_anchor=(1.0, 1.0))
+        plt.show()
 
 
 class ACStarkPhoton:
